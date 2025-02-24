@@ -52,6 +52,9 @@ model = load_model(
     compile=False
 )
 
+# Configure the API
+client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+
 # Loading the class names
 CLASS_NAMES = [ 
     "Apple Cedar Rust",
@@ -79,14 +82,14 @@ def read_file_as_image(data) -> np.ndarray:
     return image
 
 def check_supported_image(image):
-    # Check if the image is related to supported apple diseases
-    client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+    prompt = """
+       Analyze the provided image and determine if it contains any of the following apple leaf conditions: Apple Cedar Rust, Apple Black Rot, Apple Scab, or a Healthy Apple Leaf.
 
-    prompt = "Analyze the image and determine if it contains any of the following apple diseases: " \
-             "Apple Cedar Rust, Apple Black Rot, Apple Scab, or Apple Healthy. " \
-             "If it does not match these categories, return 'Error: Image not supported'. " \
-             "If it's an apple leaf but has a different disease, return 'Unsupported disease'." \
-             "If the leaf is apple related and has our supported disease, return 'Supported disease image statement only'"
+      If the image does not depict an apple leaf, return: 'Error: Image not supported.'
+      If the leaf is from an apple tree but has an unsupported disease, return: 'Unsupported disease.'
+      If the leaf belongs to an apple tree and has one of the supported diseases,return: 'Supported disease image'
+
+    """
     
     response = client.models.generate_content(
         model="gemini-2.0-flash",
@@ -97,7 +100,28 @@ def check_supported_image(image):
     )
 
     return response.text if response else "Error. Unable to process image"
-    
+
+def get_symptoms_and_measures(disease_name):
+    prompt = f"""
+      Describe the symptoms of {disease_name} in a three-sentence paragraph that is short, clear, and concise. 
+      Then, provide three effective prevention measures for {disease_name}, each in a separate sentence.
+    """
+
+    res = client.models.generate_content(
+        model="gemini-2.0-flash",
+        contents=[prompt]
+    )
+
+    # Extracting the response text
+    response_text = res.text
+
+    # Splitting symptoms and measures 
+    parts = response_text.split("\n\n")  
+
+    symptoms = parts[0].strip() if len(parts) > 0 else "Symptoms not found."
+    measures = parts[1].strip() if len(parts) > 1 else "Prevention measures not found."
+
+    return symptoms, measures
 
 @app.post("/predict")
 async def predict(
@@ -118,9 +142,14 @@ async def predict(
     predicted_class = CLASS_NAMES[np.argmax(prediction)]
     confidence = np.max(prediction)
 
+    # Fetch symptoms and prevention measures
+    symptoms, measures = get_symptoms_and_measures(predicted_class)
+
     return {
         "class": predicted_class,
-        "confidence": float(confidence)
+        "confidence": float(confidence),
+        "symptoms": symptoms,
+        "measures": measures
     }    
 
 if __name__ == "__main__":
