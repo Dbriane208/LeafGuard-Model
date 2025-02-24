@@ -7,3 +7,5 @@ tensorflow-serving-api
 matplotlib
 numpy
 pillow
+google-genai
+python-dotenv

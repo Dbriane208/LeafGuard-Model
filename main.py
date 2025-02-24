@@ -6,6 +6,11 @@ from io import BytesIO
 from PIL import Image # type: ignore
 from keras.models import load_model # type: ignore
 from keras.layers import DepthwiseConv2D # type: ignore
+from google import genai
+from google.genai import types
+import os
+from dotenv import load_dotenv
+import imghdr
 
 
 app = FastAPI()
@@ -22,6 +27,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Load the environment variables
+load_dotenv()
 
 # Disable scientific notation for clarity
 np.set_printoptions(suppress=True)
@@ -69,15 +77,41 @@ def read_file_as_image(data) -> np.ndarray:
     # Add batch dimension
     image = np.expand_dims(image, axis=0)
     return image
+
+def check_supported_image(image):
+    # Check if the image is related to supported apple diseases
+    client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+
+    prompt = "Analyze the image and determine if it contains any of the following apple diseases: " \
+             "Apple Cedar Rust, Apple Black Rot, Apple Scab, or Apple Healthy. " \
+             "If it does not match these categories, return 'Error: Image not supported'. " \
+             "If it's an apple leaf but has a different disease, return 'Unsupported disease'." \
+             "If the leaf is apple related and has our supported disease, return 'Supported disease image statement only'"
+    
+    response = client.models.generate_content(
+        model="gemini-2.0-flash",
+        contents=[
+            prompt,
+            types.Part.from_bytes(data=image,mime_type="image/jpg")
+        ]
+    )
+
+    return response.text if response else "Error. Unable to process image"
     
 
 @app.post("/predict")
 async def predict(
     file: UploadFile = File(...)
 ):
-    image = read_file_as_image(await file.read())
+    image_bytes = await file.read()
+
+    response = check_supported_image(image_bytes)
+
+    if "Error" in response or "Unsupported disease" in response:
+        return {"response": response}
 
     # Perform model prediction
+    image = read_file_as_image(image_bytes)
     prediction = model.predict(image)
 
     # Get the predicted class
@@ -89,8 +123,5 @@ async def predict(
         "confidence": float(confidence)
     }    
 
-
-
 if __name__ == "__main__":
-
     uvicorn.run(app, host='0.0.0.0', port=8000)
