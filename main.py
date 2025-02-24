@@ -1,10 +1,11 @@
-from fastapi import FastAPI, File, UploadFile
-from fastapi.middleware.cors import CORSMiddleware
-import uvicorn
-import numpy as np
+from fastapi import FastAPI, File, UploadFile # type: ignore
+from fastapi.middleware.cors import CORSMiddleware # type: ignore
+import uvicorn # type: ignore
+import numpy as np # type: ignore
 from io import BytesIO
-from PIL import Image
-import requests
+from PIL import Image # type: ignore
+from keras.models import load_model # type: ignore
+from keras.layers import DepthwiseConv2D # type: ignore
 
 
 app = FastAPI()
@@ -22,9 +23,34 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-endpoint = "http://localhost:8501/v1/models/leafguardmodel:predict"
+# Disable scientific notation for clarity
+np.set_printoptions(suppress=True)
 
-CLASS_NAMES = ['Apple_Black_rot', 'Apple_Cedar_Rust', 'Apple_healthy', 'Apple_scab']
+# Using custom load function
+def remove_groups_arg(config):
+    if 'groups' in config:
+        del config['groups']
+    return config
+
+# Custom objects
+custom_objects = {
+    'DepthwiseConv2D': lambda **kwargs: DepthwiseConv2D(**remove_groups_arg(kwargs))
+}   
+
+# Load the model
+model = load_model(
+    "models/keras/keras_model.h5",
+    custom_objects=custom_objects,
+    compile=False
+)
+
+# Loading the class names
+CLASS_NAMES = [ 
+    "Apple Cedar Rust",
+    "Apple Black Rot",
+    "Apple Scab",
+    "Apple Healthy"
+]
 
 @app.get("/")
 async def ping():
@@ -32,19 +58,16 @@ async def ping():
 
 def read_file_as_image(data) -> np.ndarray:
     image = Image.open(BytesIO(data)).convert("RGB")
-    image = image.resize((256, 256), Image.Resampling.BILINEAR)
+    image = image.resize((224, 224), Image.Resampling.LANCZOS)
     
     # Convert to numpy array before normalization
     image = np.array(image)
-    print("Image range before normalization:", image.min(), "-", image.max())
     
     # Normalize
-    image = image.astype(np.float32) / 255.0
-    print("Image range after normalization:", image.min(), "-", image.max())
+    image = (image.astype(np.float32) / 127.5) - 1
     
     # Add batch dimension
     image = np.expand_dims(image, axis=0)
-    print("Final image shape:", image.shape)
     return image
     
 
@@ -53,15 +76,11 @@ async def predict(
     file: UploadFile = File(...)
 ):
     image = read_file_as_image(await file.read())
-    img_batch = np.expand_dims(image, 0)
 
-    json_data = {
-        "instances": img_batch.tolist()
-    }
+    # Perform model prediction
+    prediction = model.predict(image)
 
-    response = requests.post(endpoint, json=json_data)
-    prediction = np.array(response.json()["predictions"][0])
-
+    # Get the predicted class
     predicted_class = CLASS_NAMES[np.argmax(prediction)]
     confidence = np.max(prediction)
 
