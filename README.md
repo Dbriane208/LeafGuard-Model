@@ -101,7 +101,7 @@ We welcome contributions! To contribute:
 For inquiries, reach out via email:
 📧 **db9755949@gmail.com**
 
-Or connect on LinkedIn: [Daniel Brian Gatuhu](https://www.linkedin.com/in/danielbriangatuhu/)
+Or connect on LinkedIn: [Daniel Brian Gatuhu](https://www.linkedin.com/in/daniel-brian-gatuhu/)
 
 ---
 
