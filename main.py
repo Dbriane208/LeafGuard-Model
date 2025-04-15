@@ -10,7 +10,6 @@ from google import genai
 from google.genai import types
 import os
 from dotenv import load_dotenv
-import imghdr
 
 
 app = FastAPI()
@@ -115,7 +114,7 @@ def get_symptoms_and_measures(disease_name):
     # Extracting the response text
     response_text = res.text
 
-    # Splitting symptoms and measures 
+    # Splitting symptoms and measures [assumming we have double line break]
     parts = response_text.split("\n\n")  
 
     symptoms = parts[0].strip() if len(parts) > 0 else "Symptoms not found."
