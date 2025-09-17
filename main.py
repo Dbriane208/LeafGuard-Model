@@ -65,20 +65,7 @@ CLASS_NAMES = [
 @app.get("/")
 async def ping():
     return "Hello, Welcome to LeafGuard"
-
-def get_image_mime_type(image_data):
-    """Detect image format and return appropriate MIME type"""
-    # Try to detect format from image data
-    format_type = imghdr.what(None, h=image_data)
     
-    mime_types = {
-        'jpeg': 'image/jpeg',
-        'png': 'image/png',
-        'jpg': 'image/jpeg'  # jpg is same as jpeg
-    }
-    
-    return mime_types.get(format_type, 'image/jpeg')
-
 def read_file_as_image(data) -> np.ndarray:
     image = Image.open(BytesIO(data)).convert("RGB")
     image = image.resize((224, 224), Image.Resampling.LANCZOS)
@@ -102,14 +89,12 @@ def check_supported_image(image):
       If the leaf belongs to a potato plant and has one of the supported diseases,return: 'Supported disease image'
 
     """
-
-    mime_type = get_image_mime_type(image)
     
     response = client.models.generate_content(
         model="gemini-2.0-flash",
         contents=[
             prompt,
-            types.Part.from_bytes(data=image,mime_type=mime_type)
+            types.Part.from_bytes(data=image,mime_type="image/jpg")
         ]
     )
 
