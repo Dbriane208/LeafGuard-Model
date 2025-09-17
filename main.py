@@ -56,10 +56,9 @@ client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 # Loading the class names
 CLASS_NAMES = [ 
-    "Apple Cedar Rust",
-    "Apple Black Rot",
-    "Apple Scab",
-    "Apple Healthy"
+    "Potato Early Blight",
+    "Potato Late Blight",
+    "Potato Healty"
 ]
 
 @app.get("/")
@@ -82,11 +81,11 @@ def read_file_as_image(data) -> np.ndarray:
 
 def check_supported_image(image):
     prompt = """
-       Analyze the provided image and determine if it contains any of the following apple leaf conditions: Apple Cedar Rust, Apple Black Rot, Apple Scab, or a Healthy Apple Leaf.
+       Analyze the provided image and determine if it contains any of the following apple leaf conditions: Potato Early Blight, Potato Late Blight, or a Potato Healthy.
 
-      If the image does not depict an apple leaf, return: 'Error: Image not supported.'
-      If the leaf is from an apple tree but has an unsupported disease, return: 'Unsupported disease.'
-      If the leaf belongs to an apple tree and has one of the supported diseases,return: 'Supported disease image'
+      If the image does not depict a potato leaf, return: 'Error: Image not supported.'
+      If the leaf is from a potato plant but has an unsupported disease, return: 'Unsupported disease.'
+      If the leaf belongs to a potato plant and has one of the supported diseases,return: 'Supported disease image'
 
     """
     
@@ -94,7 +93,7 @@ def check_supported_image(image):
         model="gemini-2.0-flash",
         contents=[
             prompt,
-            types.Part.from_bytes(data=image,mime_type="image/jpg")
+            types.Part.from_bytes(data=image,mime_type="image/jpeg")
         ]
     )
 
