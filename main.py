@@ -103,7 +103,8 @@ def check_supported_image(image):
 def get_symptoms_and_measures(disease_name):
     prompt = f"""
       Describe the symptoms of {disease_name} in a three-sentence paragraph that is short, clear, and concise. 
-      Then, provide three effective prevention measures for {disease_name}, each in a separate sentence.
+      Then, provide three effective prevention measures for {disease_name}, each in a separate sentence. If the identified image has not symptoms i.e it is Potato Healthy Leaf.
+      Then, for the symptoms return: 'No symptoms identified. Your plant is healthy.' and then for measures return: 'No preventive measures. You plant is healthy.'
     """
 
     res = client.models.generate_content(
