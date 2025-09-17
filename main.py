@@ -82,7 +82,7 @@ def read_file_as_image(data) -> np.ndarray:
 
 def check_supported_image(image):
     prompt = """
-       Analyze the provided image and determine if it contains any of the following apple leaf conditions: Potato Early Blight, Potato Late Blight, or a Potato Healthy.
+       Analyze the provided image and determine if it contains any of the following potato leaf conditions: Potato Early Blight, Potato Late Blight, or a Potato Healthy Leaf.
 
       If the image does not depict a potato leaf, return: 'Error: Image not supported.'
       If the leaf is from a potato plant but has an unsupported disease, return: 'Unsupported disease.'
