@@ -87,8 +87,8 @@ def check_supported_image(image):
       If the image does not depict a potato leaf, return: 'Error: Image not supported.'
       If the leaf is from a potato plant but has an unsupported disease, return: 'Unsupported disease.'
       If the leaf belongs to a potato plant and has one of the supported diseases,return: 'Supported disease image'
-      If predicted disease is "Potato Healty" then for symptoms return: 'No symptoms identified. Your plant is healthy.'
-      then, for measures return: 'No measures given. Your plant is doing right.'
+      If the leaf is potato healthy then for symptoms return: 'No symptoms identified. Your plant is healthy.'
+      If the leaf is potato healthy then for measures return: 'No measures given. Your plant is doing right.'
 
     """
     
@@ -106,9 +106,6 @@ def get_symptoms_and_measures(disease_name):
     prompt = f"""
       Describe the symptoms of {disease_name} in a three-sentence paragraph that is short, clear, and concise. 
       Then, provide three effective prevention measures for {disease_name}, each in a separate sentence.
-
-      If predicted disease is "Potato Healty" then for symptoms return: 'No symptoms identified. Your plant is healthy.'
-      then, for measures return: 'No measures given. Your plant is doing right.'
     """
 
 
