@@ -102,10 +102,21 @@ def check_supported_image(image):
 
 def get_symptoms_and_measures(disease_name):
     prompt = f"""
-      Describe the symptoms of {disease_name} in a three-sentence paragraph that is short, clear, and concise. 
-      Then, provide three effective prevention measures for {disease_name}, each in a separate sentence. If the identified image has not symptoms i.e it is Potato Healthy Leaf.
-      Then, for the symptoms return: 'No symptoms identified. Your plant is healthy.' and then for measures return: 'No preventive measures. You plant is healthy.'
-    """
+You are an expert in plant disease diagnosis.
+
+Task:
+1. If the detected disease is {disease_name} and it indicates a real disease:
+   - Write a short, clear, and concise three-sentence paragraph describing the  {disease_name} symptoms.
+   - Then list three effective prevention measures, each in its own sentence.
+2. If the detected disease is "Potato Healthy Leaf" (meaning no disease symptoms):
+   - For symptoms, return exactly: "No symptoms identified. Your plant is healthy."
+   - For measures, return exactly: "No preventive measures. Your plant is healthy."
+
+Output format:
+Symptoms: <your text here>
+Prevention: <your text here>
+"""
+
 
     res = client.models.generate_content(
         model="gemini-2.0-flash",
