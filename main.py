@@ -1,4 +1,3 @@
-import imghdr
 from fastapi import FastAPI, File, UploadFile # type: ignore
 from fastapi.middleware.cors import CORSMiddleware # type: ignore
 import uvicorn # type: ignore
@@ -11,7 +10,6 @@ from google import genai
 from google.genai import types
 import os
 from dotenv import load_dotenv
-
 
 app = FastAPI()
 
