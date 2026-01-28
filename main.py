@@ -103,30 +103,54 @@ def read_file_as_image(data) -> np.ndarray:
     return image
 
 def check_supported_image(image):
+    """
+    Validates if the image contains a potato leaf and if it shows a supported condition.
+    Returns one of:
+    - "Supported disease image" - Valid potato leaf with supported condition
+    - "Error: This image does not contain a potato leaf..." - Not a potato leaf
+    - "Unsupported disease" - Potato leaf with unsupported disease
+    """
     if not USE_GEMINI_VALIDATION or client is None:
         return "Supported disease image"  # Skip validation when Gemini is disabled
         
     try:
         prompt = """
-           Analyze the provided image and determine if it contains any of the following potato leaf conditions: Potato Early Blight, Potato Late Blight, or a Potato Healthy Leaf.
+        You are an expert agricultural AI assistant. Analyze the provided image carefully and follow these steps:
 
-          If the image does not depict a potato leaf, return: 'Error: Image not supported.'
-          If the leaf is from a potato plant but has an unsupported disease, return: 'Unsupported disease.'
-          If the leaf belongs to a potato plant and has one of the supported diseases,return: 'Supported disease image'
-          If the leaf is potato healthy then for symptoms return: 'No symptoms identified. Your plant is healthy.'
-          If the leaf is potato healthy then for measures return: 'No measures given. Your plant is doing right.'
-
+        Step 1: First, determine if the image shows a POTATO LEAF specifically.
+        - If the image does NOT show a potato leaf (e.g., it's another plant, an object, a person, or unrelated content), 
+          respond with EXACTLY: "Error: This image does not contain a potato leaf. Please upload an image of a potato leaf."
+        
+        Step 2: If it IS a potato leaf, determine its health status:
+        - If the leaf shows Potato Early Blight, Potato Late Blight, or is Healthy, respond with EXACTLY: "Supported disease image"
+        - If the leaf has a different disease not in the supported list (Early Blight, Late Blight, Healthy), 
+          respond with EXACTLY: "Unsupported disease"
+        
+        Respond with ONLY one of the exact phrases above. Do not add any additional text or explanation.
         """
         
         response = client.models.generate_content(
             model="gemini-2.0-flash",
             contents=[
                 prompt,
-                types.Part.from_bytes(data=image,mime_type="image/jpg")
+                types.Part.from_bytes(data=image, mime_type="image/jpeg")
             ]
         )
 
-        return response.text if response else "Error. Unable to process image"
+        result = response.text.strip() if response else "Error. Unable to process image"
+        
+        # Clean up the response to match expected formats
+        if "not contain a potato leaf" in result.lower() or "not a potato leaf" in result.lower():
+            return "Error: This image does not contain a potato leaf. Please upload an image of a potato leaf."
+        elif "unsupported disease" in result.lower():
+            return "Unsupported disease"
+        elif "supported disease image" in result.lower():
+            return "Supported disease image"
+        else:
+            # If Gemini gives an unexpected response, log it and continue with prediction
+            print(f"Unexpected Gemini response: {result}")
+            return "Supported disease image"
+            
     except Exception as e:
         print(f"Gemini API error in validation: {e}")
         return "Supported disease image"  # Continue with prediction on error
@@ -190,12 +214,14 @@ async def predict(
 ):
     image_bytes = await file.read()
 
+    # First, validate if the image is a potato leaf
     response = check_supported_image(image_bytes)
 
+    # If validation fails, return error immediately
     if "Error" in response or "Unsupported disease" in response:
         return {"response": response}
 
-    # Perform model prediction
+    # Perform model prediction only if validation passed
     image = read_file_as_image(image_bytes)
     prediction = model.predict(image)
 
