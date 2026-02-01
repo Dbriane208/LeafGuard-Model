@@ -54,25 +54,21 @@ model = load_model(
     compile=False
 )
 
-# Configure the API with fallback
+# Configure Gemini client
 def get_client():
-    """Get a Gemini client with fallback to secondary API key if primary fails"""
+    """Get a Gemini client if Gemini features are enabled"""
     if not USE_GEMINI_VALIDATION and not USE_GEMINI_DETAILS:
         return None
         
-    primary_key = os.getenv("GEMINI_API_KEY")
-    secondary_key = os.getenv("GEMINI_API_KEY_2")
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        print("Warning: GEMINI_API_KEY not set. Gemini features will be disabled.")
+        return None
     
     try:
-        client = genai.Client(api_key=primary_key)
-        return client
+        return genai.Client(api_key=api_key)
     except Exception as e:
-        if secondary_key:
-            try:
-                client = genai.Client(api_key=secondary_key)
-                return client
-            except Exception as e2:
-                return None
+        print(f"Failed to initialize Gemini client: {e}")
         return None
 
 client = get_client()
