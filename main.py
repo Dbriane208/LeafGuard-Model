@@ -84,6 +84,10 @@ CLASS_NAMES = [
     "Potato Healty"
 ]
 
+# Confidence threshold - predictions below this are considered unreliable
+# (likely not a potato leaf image)
+CONFIDENCE_THRESHOLD = 0.70
+
 @app.get("/")
 async def ping():
     return "Hello, Welcome to LeafGuard"
@@ -130,7 +134,7 @@ def check_supported_image(image):
         """
         
         response = client.models.generate_content(
-            model="gemini-2.0-flash",
+            model="gemini-3-flash-preview",
             contents=[
                 prompt,
                 types.Part.from_bytes(data=image, mime_type="image/jpeg")
@@ -214,20 +218,26 @@ async def predict(
 ):
     image_bytes = await file.read()
 
-    # First, validate if the image is a potato leaf
+    # First, validate if the image is a potato leaf (if Gemini validation is enabled)
     response = check_supported_image(image_bytes)
 
     # If validation fails, return error immediately
     if "Error" in response or "Unsupported disease" in response:
         return {"response": response}
 
-    # Perform model prediction only if validation passed
+    # Perform model prediction
     image = read_file_as_image(image_bytes)
     prediction = model.predict(image)
 
-    # Get the predicted class
+    # Get the predicted class and confidence
     predicted_class = CLASS_NAMES[np.argmax(prediction)]
     confidence = np.max(prediction)
+
+    # Check if confidence is below threshold - likely not a potato leaf image
+    if confidence < CONFIDENCE_THRESHOLD:
+        return {
+            "response": "Error: This image does not appear to be a potato leaf or the image quality is too low for reliable classification. Please upload a clear image of a potato leaf."
+        }
 
     # Fetch symptoms and prevention measures
     symptoms, measures = get_symptoms_and_measures(predicted_class)
