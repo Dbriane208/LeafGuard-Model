@@ -7,7 +7,6 @@ from PIL import Image # type: ignore
 from keras.models import load_model # type: ignore
 from keras.layers import DepthwiseConv2D # type: ignore
 from google import genai
-from google.genai import types
 import os
 from dotenv import load_dotenv
 
@@ -50,15 +49,34 @@ model = load_model(
     compile=False
 )
 
-# Configure the API
+# Configure the Gemini API (for symptoms and measures only)
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 # Loading the class names
 CLASS_NAMES = [ 
     "Potato Early Blight",
     "Potato Late Blight",
-    "Potato Healty"
+    "Potato Healthy"
 ]
+
+# Confidence threshold - if model confidence is below this, image is likely not a potato leaf
+CONFIDENCE_THRESHOLD = 0.60
+
+# Fallback symptoms and measures when Gemini API fails
+FALLBACK_INFO = {
+    "Potato Early Blight": {
+        "symptoms": "Early blight causes dark brown to black spots with concentric rings (target-like pattern) on older, lower leaves first. The spots may have a yellow halo around them, and severely affected leaves turn yellow and drop prematurely. Stems and tubers can also develop dark, sunken lesions.",
+        "measures": "Practice crop rotation with non-solanaceous crops for at least 2-3 years. Remove and destroy infected plant debris and avoid overhead irrigation to keep foliage dry. Apply fungicides preventively when conditions favor disease development (warm, humid weather)."
+    },
+    "Potato Late Blight": {
+        "symptoms": "Late blight appears as water-soaked, pale green to dark brown lesions on leaves that rapidly expand. A white, fuzzy mold growth appears on the underside of leaves during humid conditions. The disease spreads quickly, causing entire plants to collapse within days, and can infect tubers causing firm, brown rot.",
+        "measures": "Plant certified disease-free seed potatoes and choose resistant varieties when available. Apply protective fungicides before symptoms appear, especially during cool, wet weather. Remove and destroy infected plants immediately and avoid overhead irrigation."
+    },
+    "Potato Healthy": {
+        "symptoms": "No disease symptoms detected. Your potato plant appears healthy with normal green foliage.",
+        "measures": "Continue good agricultural practices: ensure proper spacing for air circulation, water at the base of plants, and monitor regularly for early signs of disease. Maintain balanced soil nutrition and remove any weeds that may harbor pests or diseases."
+    }
+}
 
 @app.get("/")
 async def ping():
@@ -78,49 +96,39 @@ def read_file_as_image(data) -> np.ndarray:
     image = np.expand_dims(image, axis=0)
     return image
 
-def check_supported_image(image):
-    """
-    Validates if the image contains a potato leaf and if it shows a supported condition.
-    """
-    prompt = """
-    Analyze the provided image and determine if it contains any of the following potato leaf conditions: Potato Early Blight, Potato Late Blight, or a Healthy Potato Leaf.
-
-    If the image does not depict a potato leaf, return: 'Error: Image not supported.'
-    If the leaf is from a potato plant but has an unsupported disease, return: 'Unsupported disease.'
-    If the leaf belongs to a potato plant and has one of the supported conditions, return: 'Supported disease image'
-    """
-    
-    response = client.models.generate_content(
-        model="gemini-2.0-flash",
-        contents=[
-            prompt,
-            types.Part.from_bytes(data=image, mime_type="image/jpeg")
-        ]
-    )
-
-    return response.text if response else "Error. Unable to process image"
-
 def get_symptoms_and_measures(disease_name):
-    prompt = f"""
-      Describe the symptoms of {disease_name} in a three-sentence paragraph that is short, clear, and concise. 
-      Then, provide three effective prevention measures for {disease_name}, each in a separate sentence.
     """
+    Get symptoms and prevention measures using Gemini API.
+    Falls back to static content if API fails.
+    """
+    try:
+        prompt = f"""
+          Describe the symptoms of {disease_name} in a three-sentence paragraph that is short, clear, and concise. 
+          Then, provide three effective prevention measures for {disease_name}, each in a separate sentence.
+        """
 
-    res = client.models.generate_content(
-        model="gemini-2.0-flash",
-        contents=[prompt]
-    )
+        res = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=[prompt]
+        )
 
-    # Extracting the response text
-    response_text = res.text
+        # Extracting the response text
+        response_text = res.text
 
-    # Splitting symptoms and measures [assuming we have double line break]
-    parts = response_text.split("\n\n")  
+        # Splitting symptoms and measures [assuming we have double line break]
+        parts = response_text.split("\n\n")  
 
-    symptoms = parts[0].strip() if len(parts) > 0 else "Symptoms not found."
-    measures = parts[1].strip() if len(parts) > 1 else "Prevention measures not found."
+        symptoms = parts[0].strip() if len(parts) > 0 else FALLBACK_INFO[disease_name]["symptoms"]
+        measures = parts[1].strip() if len(parts) > 1 else FALLBACK_INFO[disease_name]["measures"]
 
-    return symptoms, measures
+        return symptoms, measures
+    except Exception as e:
+        print(f"Gemini API error: {e}. Using fallback content.")
+        fallback = FALLBACK_INFO.get(disease_name, {
+            "symptoms": "Unable to retrieve symptoms. Please consult an agricultural expert.",
+            "measures": "Unable to retrieve prevention measures. Please consult an agricultural expert."
+        })
+        return fallback["symptoms"], fallback["measures"]
 
 @app.post("/predict")
 async def predict(
@@ -128,22 +136,21 @@ async def predict(
 ):
     image_bytes = await file.read()
 
-    # Validate if the image is a potato leaf
-    response = check_supported_image(image_bytes)
-
-    # If validation fails, return error immediately
-    if "Error" in response or "Unsupported disease" in response:
-        return {"response": response}
-
     # Perform model prediction
     image = read_file_as_image(image_bytes)
     prediction = model.predict(image)
 
-    # Get the predicted class
+    # Get the predicted class and confidence
     predicted_class = CLASS_NAMES[np.argmax(prediction)]
     confidence = np.max(prediction)
 
-    # Fetch symptoms and prevention measures
+    # Check if confidence is too low - likely not a potato leaf
+    if confidence < CONFIDENCE_THRESHOLD:
+        return {
+            "response": "Error: The image does not appear to be a potato leaf or the image quality is insufficient for classification. Please upload a clear image of a potato leaf."
+        }
+
+    # Fetch symptoms and prevention measures (with fallback)
     symptoms, measures = get_symptoms_and_measures(predicted_class)
 
     return {
