@@ -82,7 +82,7 @@ CLASS_NAMES = [
 
 # Confidence threshold - predictions below this are considered unreliable
 # (likely not a potato leaf image)
-CONFIDENCE_THRESHOLD = 0.70
+CONFIDENCE_THRESHOLD = 0.90
 
 @app.get("/")
 async def ping():
