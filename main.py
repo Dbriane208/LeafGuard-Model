@@ -86,7 +86,7 @@ def is_potato_leaf(image_data: bytes) -> tuple[bool, str]:
         Do not include any other text or explanation."""
         
         response = client.models.generate_content(
-            model="gemini-2.0-flash",
+            model="gemini-3-flash-preview",
             contents=[
                 types.Content(
                     role="user",
