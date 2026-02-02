@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile # type: ignore
+from fastapi import FastAPI, File, UploadFile, HTTPException # type: ignore
 from fastapi.middleware.cors import CORSMiddleware # type: ignore
 import uvicorn # type: ignore
 import numpy as np # type: ignore
@@ -9,6 +9,7 @@ from keras.layers import DepthwiseConv2D # type: ignore
 from google import genai
 import os
 from dotenv import load_dotenv
+import colorsys
 
 app = FastAPI()
 
@@ -61,6 +62,54 @@ CLASS_NAMES = [
 
 # Confidence threshold - if model confidence is below this, image is likely not a potato leaf
 CONFIDENCE_THRESHOLD = 0.60
+
+# Leaf detection thresholds
+GREEN_HUE_RANGE = (60, 180)  # Hue range for green/yellowish-green colors (0-360 scale)
+MIN_GREEN_PERCENTAGE = 15   # Minimum percentage of green-ish pixels required
+MIN_SATURATION = 0.10       # Minimum saturation for leaf-like colors
+
+def is_likely_potato_leaf(image_data: bytes) -> tuple[bool, str]:
+    """
+    Pre-validate if the image is likely a potato leaf based on color analysis.
+    Returns (is_valid, message).
+    """
+    try:
+        image = Image.open(BytesIO(image_data)).convert("RGB")
+        image = image.resize((100, 100))  # Resize for faster processing
+        pixels = list(image.getdata())
+        
+        total_pixels = len(pixels)
+        green_leaf_pixels = 0
+        brown_leaf_pixels = 0
+        
+        for r, g, b in pixels:
+            # Convert RGB to HSV for better color analysis
+            h, s, v = colorsys.rgb_to_hsv(r / 255.0, g / 255.0, b / 255.0)
+            h = h * 360  # Convert to 0-360 scale
+            
+            # Check for green/yellowish-green colors (healthy or diseased leaves)
+            if GREEN_HUE_RANGE[0] <= h <= GREEN_HUE_RANGE[1] and s >= MIN_SATURATION and v >= 0.15:
+                green_leaf_pixels += 1
+            
+            # Check for brown/tan colors (diseased potato leaves - blight spots)
+            # Brown typically has hue 20-50, with moderate saturation
+            if 15 <= h <= 60 and 0.15 <= s <= 0.8 and 0.15 <= v <= 0.7:
+                brown_leaf_pixels += 1
+        
+        green_percentage = (green_leaf_pixels / total_pixels) * 100
+        brown_percentage = (brown_leaf_pixels / total_pixels) * 100
+        leaf_percentage = green_percentage + brown_percentage
+        
+        # Image should have significant leaf-like colors
+        if leaf_percentage < MIN_GREEN_PERCENTAGE:
+            return False, "The image does not appear to contain a potato leaf. Please upload a clear image of a potato leaf."
+        
+        return True, "Valid potato leaf image"
+        
+    except Exception as e:
+        # If image processing fails, let the model handle it
+        print(f"Leaf validation error: {e}")
+        return True, "Validation skipped due to processing error"
 
 # Fallback symptoms and measures when Gemini API fails
 FALLBACK_INFO = {
@@ -135,6 +184,14 @@ async def predict(
     file: UploadFile = File(...)
 ):
     image_bytes = await file.read()
+    
+    # Pre-validate: Check if the image is likely a potato leaf
+    is_valid, validation_message = is_likely_potato_leaf(image_bytes)
+    if not is_valid:
+        return {
+            "error": True,
+            "response": validation_message
+        }
 
     # Perform model prediction
     image = read_file_as_image(image_bytes)
@@ -147,7 +204,8 @@ async def predict(
     # Check if confidence is too low - likely not a potato leaf
     if confidence < CONFIDENCE_THRESHOLD:
         return {
-            "response": "Error: The image does not appear to be a potato leaf or the image quality is insufficient for classification. Please upload a clear image of a potato leaf."
+            "error": True,
+            "response": "The image does not appear to be a recognizable potato leaf or the image quality is insufficient for classification. Please upload a clear image of a potato leaf."
         }
 
     # Fetch symptoms and prevention measures (with fallback)
