@@ -7,9 +7,10 @@ from PIL import Image # type: ignore
 from keras.models import load_model # type: ignore
 from keras.layers import DepthwiseConv2D # type: ignore
 from google import genai
+from google.genai import types
 import os
+import base64
 from dotenv import load_dotenv
-import colorsys
 
 app = FastAPI()
 
@@ -63,53 +64,51 @@ CLASS_NAMES = [
 # Confidence threshold - if model confidence is below this, image is likely not a potato leaf
 CONFIDENCE_THRESHOLD = 0.60
 
-# Leaf detection thresholds
-GREEN_HUE_RANGE = (60, 180)  # Hue range for green/yellowish-green colors (0-360 scale)
-MIN_GREEN_PERCENTAGE = 15   # Minimum percentage of green-ish pixels required
-MIN_SATURATION = 0.10       # Minimum saturation for leaf-like colors
-
-def is_likely_potato_leaf(image_data: bytes) -> tuple[bool, str]:
+def is_potato_leaf(image_data: bytes) -> tuple[bool, str]:
     """
-    Pre-validate if the image is likely a potato leaf based on color analysis.
+    Use Gemini vision API to verify if the image contains a potato leaf.
     Returns (is_valid, message).
     """
     try:
-        image = Image.open(BytesIO(image_data)).convert("RGB")
-        image = image.resize((100, 100))  # Resize for faster processing
-        pixels = list(image.getdata())
+        # Convert image bytes to base64
+        image_base64 = base64.b64encode(image_data).decode('utf-8')
         
-        total_pixels = len(pixels)
-        green_leaf_pixels = 0
-        brown_leaf_pixels = 0
+        # Determine MIME type
+        image = Image.open(BytesIO(image_data))
+        mime_type = f"image/{image.format.lower()}" if image.format else "image/jpeg"
         
-        for r, g, b in pixels:
-            # Convert RGB to HSV for better color analysis
-            h, s, v = colorsys.rgb_to_hsv(r / 255.0, g / 255.0, b / 255.0)
-            h = h * 360  # Convert to 0-360 scale
-            
-            # Check for green/yellowish-green colors (healthy or diseased leaves)
-            if GREEN_HUE_RANGE[0] <= h <= GREEN_HUE_RANGE[1] and s >= MIN_SATURATION and v >= 0.15:
-                green_leaf_pixels += 1
-            
-            # Check for brown/tan colors (diseased potato leaves - blight spots)
-            # Brown typically has hue 20-50, with moderate saturation
-            if 15 <= h <= 60 and 0.15 <= s <= 0.8 and 0.15 <= v <= 0.7:
-                brown_leaf_pixels += 1
+        prompt = """Analyze this image and determine if it shows a potato leaf (or potato plant leaves).
         
-        green_percentage = (green_leaf_pixels / total_pixels) * 100
-        brown_percentage = (brown_leaf_pixels / total_pixels) * 100
-        leaf_percentage = green_percentage + brown_percentage
+        Respond with ONLY one of these exact responses:
+        - "YES" if the image clearly shows a potato leaf or potato plant leaves (healthy or diseased)
+        - "NO" if the image does not show a potato leaf
         
-        # Image should have significant leaf-like colors
-        if leaf_percentage < MIN_GREEN_PERCENTAGE:
+        Do not include any other text or explanation."""
+        
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=[
+                types.Content(
+                    role="user",
+                    parts=[
+                        types.Part.from_bytes(data=image_data, mime_type=mime_type),
+                        types.Part.from_text(text=prompt)
+                    ]
+                )
+            ]
+        )
+        
+        result = response.text.strip().upper()
+        
+        if "YES" in result:
+            return True, "Valid potato leaf image"
+        else:
             return False, "The image does not appear to contain a potato leaf. Please upload a clear image of a potato leaf."
-        
-        return True, "Valid potato leaf image"
-        
+            
     except Exception as e:
-        # If image processing fails, let the model handle it
-        print(f"Leaf validation error: {e}")
-        return True, "Validation skipped due to processing error"
+        print(f"Gemini image validation error: {e}")
+        # If Gemini fails, allow the image to proceed to the model
+        return True, "Validation skipped due to API error"
 
 # Fallback symptoms and measures when Gemini API fails
 FALLBACK_INFO = {
@@ -185,8 +184,8 @@ async def predict(
 ):
     image_bytes = await file.read()
     
-    # Pre-validate: Check if the image is likely a potato leaf
-    is_valid, validation_message = is_likely_potato_leaf(image_bytes)
+    # Pre-validate: Use Gemini to check if the image is a potato leaf
+    is_valid, validation_message = is_potato_leaf(image_bytes)
     if not is_valid:
         return {
             "error": True,
