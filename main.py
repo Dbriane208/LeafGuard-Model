@@ -108,7 +108,7 @@ def get_symptoms_and_measures(disease_name):
         """
 
         res = client.models.generate_content(
-            model="gemini-2.0-flash",
+            model="gemini-3-flash-preview",
             contents=[prompt]
         )
 
